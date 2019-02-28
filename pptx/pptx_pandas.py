@@ -99,7 +99,7 @@ def SubElement(parent, tagname, **kwargs):
         parent.append(element)
         return element
     
-def _set_cell_border(cell, border_color="4f81bd", border_width='12700'):
+def _set_cell_border(cell, border_color="4f81bd", border_width='12700', border_scheme_color = 'accent1'):
     """ Hack function to enable the setting of border width and border color
         - left border
         - right border
@@ -112,7 +112,10 @@ def _set_cell_border(cell, border_color="4f81bd", border_width='12700'):
     for border in 'LRTB':
         lnL = SubElement(tcPr, 'a:ln' + border, w='3175', cap='flat', cmpd='sng', algn='ctr')
         lnL_solidFill = SubElement(lnL, 'a:solidFill')
-        lnL_srgbClr = SubElement(lnL_solidFill, 'a:srgbClr', val=border_color)
+        if border_scheme_color is not None:
+            lnL_srgbClr = SubElement(lnL_solidFill, 'a:schemeClr', val=border_scheme_color)
+        else:
+            lnL_srgbClr = SubElement(lnL_solidFill, 'a:srgbClr', val=border_color)
         lnL_prstDash = SubElement(lnL, 'a:prstDash', val='solid')
         lnL_round_ = SubElement(lnL, 'a:round')
         lnL_headEnd = SubElement(lnL, 'a:headEnd', type='none', w='med', len='med')
