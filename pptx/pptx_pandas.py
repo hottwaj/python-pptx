@@ -29,15 +29,39 @@ def set_cell_appearance(cell):
     cell.fill.background()
     _set_cell_border(cell)
     
-def write_pptx_dataframe(dataframe, pptx_table, col_width = 1.0, format_opts = {}, font_attrs = {},
+def write_pptx_dataframe(dataframe, pptx_table, col_width = 1.0, format_opts = {}, font_attrs = {'size': Pt(8), 'name': 'Calibri'},
                          header_font_attrs = {'bold': True, 'color_rgb': RGBColor(34, 64, 97)}):
     rows, cols = dataframe.shape
-    if isinstance(dataframe.columns, pandas.MultiIndex) or isinstance(dataframe.index, pandas.MultiIndex):
-        raise RuntimeError('Cannot yet cope with MultiIndex columns or row index')
+    if isinstance(dataframe.index, pandas.MultiIndex):
+        raise RuntimeError('Cannot yet cope with MultiIndex in rows')
     indexes = 1
-    headers = 1
+    headers = len(dataframe.columns.levels)
 
     header_font_attrs = dict(header_font_attrs, **font_attrs)
+    
+    for i in range(headers):
+        #headers
+        prev_header = no_prev_header = '##special missing value'
+        first_merged_cell = 0
+        mergeable_cell_count = 0
+        for c, header_name in enumerate(dataframe.columns.values):
+            col_name = header_name[i]
+            if prev_header == no_prev_header or prev_header != col_name:
+                if mergeable_cell_count > 0:
+                    pptx_table.cell(i, first_merged_cell + indexes).merge(pptx_table.cell(i, first_merged_cell + mergeable_cell_count + indexes))
+                prev_header = col_name
+                first_merged_cell = c
+                mergeable_cell_count = 0
+                
+                cell = pptx_table.cell(i, c + indexes)
+                cell.text = format_cell_text(col_name, **format_opts)
+                set_cell_font_attrs(cell, **header_font_attrs)
+                set_cell_appearance(cell)
+            else:
+                mergeable_cell_count += 1
+        if mergeable_cell_count > 0:
+            pptx_table.cell(i, first_merged_cell + indexes).merge(pptx_table.cell(i, first_merged_cell + mergeable_cell_count + indexes))
+                
     for c in range(cols):
         #set column widths
         if isinstance(col_width, numbers.Number):
@@ -45,12 +69,6 @@ def write_pptx_dataframe(dataframe, pptx_table, col_width = 1.0, format_opts = {
         else:
             w = DIST_METRIC(col_width[c + 1])
         pptx_table.columns[c + indexes].width = w
-
-        #headers
-        cell = pptx_table.cell(0, c + indexes)
-        cell.text = format_cell_text(dataframe.columns[c], **format_opts)
-        set_cell_font_attrs(cell, **header_font_attrs)
-        set_cell_appearance(cell)
 
         #body cells
         for r in range(rows):
@@ -69,18 +87,19 @@ def write_pptx_dataframe(dataframe, pptx_table, col_width = 1.0, format_opts = {
     pptx_table.columns[0].width = DIST_METRIC(col_width if isinstance(col_width, numbers.Number) else col_width[0])
     
     #index name
-    cell = pptx_table.cell(0, 0)
-    if dataframe.index.name is not None:
-        cell.text = format_cell_text(dataframe.index.name, **format_opts)
-    set_cell_font_attrs(cell, **header_font_attrs)
-    set_cell_appearance(cell)
+    for i in range(headers):
+        cell = pptx_table.cell(i, 0)
+        if dataframe.index.name is not None:
+            cell.text = format_cell_text(dataframe.index.name, **format_opts)
+        set_cell_font_attrs(cell, **header_font_attrs)
+        set_cell_appearance(cell)
         
 def create_pptx_table(pptx_slide, dataframe, left, top, col_width, row_height, **write_kwargs):
     rows, cols = dataframe.shape
-    if isinstance(dataframe.columns, pandas.MultiIndex) or isinstance(dataframe.index, pandas.MultiIndex):
-        raise RuntimeError('Cannot yet cope with MultiIndex columns or row index')
+    if isinstance(dataframe.index, pandas.MultiIndex):
+        raise RuntimeError('Cannot yet cope with MultiIndex rows')
     indexes = 1
-    headers = 1
+    headers = len(dataframe.columns.levels)
 
     width = DIST_METRIC(col_width * cols if isinstance(col_width, numbers.Number) else sum(col_width))
     height = DIST_METRIC(row_height * rows)
