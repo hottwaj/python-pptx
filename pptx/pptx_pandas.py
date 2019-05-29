@@ -99,7 +99,10 @@ def create_pptx_table(pptx_slide, dataframe, left, top, col_width, row_height, *
     if isinstance(dataframe.index, pandas.MultiIndex):
         raise RuntimeError('Cannot yet cope with MultiIndex rows')
     indexes = 1
-    headers = len(dataframe.columns.levels)
+    if isinstance(dataframe.columns, pandas.MultiIndex):
+        headers = len(dataframe.columns.levels)
+    else:
+        headers = 1
 
     width = DIST_METRIC(col_width * cols if isinstance(col_width, numbers.Number) else sum(col_width))
     height = DIST_METRIC(row_height * rows)
