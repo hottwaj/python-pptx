@@ -7,6 +7,7 @@ from pptx.oxml.xmlchemy import OxmlElement
 import numbers
 import pandas
 DIST_METRIC = Inches
+from six import text_type
 
 def set_cell_font_attrs(cell, **kwargs):
     for p in cell.text_frame.paragraphs:
@@ -23,7 +24,7 @@ def format_cell_text(val, float_format = '{:,.0f}', int_format = '{:,d}'):
     elif isinstance(val, numbers.Real):
         return float_format.format(val)
     else:
-        return unicode(val)
+        return text_type(val)
     
 def set_cell_appearance(cell):
     cell.fill.background()
@@ -35,7 +36,11 @@ def write_pptx_dataframe(dataframe, pptx_table, col_width = 1.0, format_opts = {
     if isinstance(dataframe.index, pandas.MultiIndex):
         raise RuntimeError('Cannot yet cope with MultiIndex in rows')
     indexes = 1
-    headers = len(dataframe.columns.levels)
+    
+    if isinstance(dataframe.columns, pandas.MultiIndex):
+        headers = len(dataframe.columns.levels)
+    else:
+        headers = 1
 
     header_font_attrs = dict(header_font_attrs, **font_attrs)
     
@@ -45,7 +50,7 @@ def write_pptx_dataframe(dataframe, pptx_table, col_width = 1.0, format_opts = {
         first_merged_cell = 0
         mergeable_cell_count = 0
         for c, header_name in enumerate(dataframe.columns.values):
-            col_name = header_name[i]
+            col_name = header_name[i] if headers > 1 else header_name
             if prev_header == no_prev_header or prev_header != col_name:
                 if mergeable_cell_count > 0:
                     pptx_table.cell(i, first_merged_cell + indexes).merge(pptx_table.cell(i, first_merged_cell + mergeable_cell_count + indexes))
@@ -99,7 +104,11 @@ def create_pptx_table(pptx_slide, dataframe, left, top, col_width, row_height, *
     if isinstance(dataframe.index, pandas.MultiIndex):
         raise RuntimeError('Cannot yet cope with MultiIndex rows')
     indexes = 1
-    headers = len(dataframe.columns.levels)
+
+    if isinstance(dataframe.columns, pandas.MultiIndex):
+        headers = len(dataframe.columns.levels)
+    else:
+        headers = 1
 
     width = DIST_METRIC(col_width * cols if isinstance(col_width, numbers.Number) else sum(col_width))
     height = DIST_METRIC(row_height * rows)
