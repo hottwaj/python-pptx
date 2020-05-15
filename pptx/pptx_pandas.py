@@ -20,6 +20,9 @@ class PresentationWriter():
             copyfile(pptx_template, pptx_file)
         
         self.presentation = Presentation(self.pptx_file)
+        core_props = self.presentation.core_properties
+        core_props.title = pptx_title
+        core_props.keywords = ''
         
     def chart_to_file(self, chart_obj, img_file):
         if hasattr(chart_obj, 'write_image'):
