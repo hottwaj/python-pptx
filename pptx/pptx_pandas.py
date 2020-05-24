@@ -35,12 +35,13 @@ class PresentationWriter():
     def save_presentation(self):
         self.presentation.save(self.pptx_file)
             
-    def write_pptx(self, slide_title, strats_charts, strats_table = None, 
+    def write_slide(self, title, charts = [], tables = [], 
                    overwrite_if_present = False,
                    overwrite_only = False,
-                   col_width = 0.6, charts_per_row = 2,
+                   col_width = 0.6, charts_per_row = 2, tables_per_row = 1,
                    multi_chart_margin_top = 1.4, multi_chart_margin_left = 1.5,
-                   charts_horizontal_gap = 0.7, charts_vertical_gap = 0.5):
+                   charts_horizontal_gap = 0.7, charts_vertical_gap = 0.5,
+                   table_row_height = 0.2):
         if overwrite_if_present:
             try:
                 self.overwrite_pptx()
@@ -63,33 +64,52 @@ class PresentationWriter():
 
         font_attrs = dict(size = Pt(7), name = 'Calibri')
 
-        if strats_table is not None:
-            table = create_pptx_table(slide, strats_table.get_formatted_df(), left = 1.7, top = 4.3, 
-                                      col_width = [0.7] + [col_width]*len(strats_table.columns), row_height = 0.2,
-                                      font_attrs = font_attrs)
-
-        if not isinstance(strats_charts, (list, tuple)):
-            strats_charts = [strats_charts]
-
-        total_chart_width = multi_chart_margin_left if len(strats_charts) > 1 else 2.2
-        initial_width = total_chart_width
-        total_chart_height = multi_chart_margin_top if len(strats_charts) > 2 else 1.7
-        for i, strats_chart in enumerate(strats_charts):
-            chart_width = strats_chart.width / 800.0 * 5.0
-            chart_height = strats_chart.height / 800.0 * 5.0
-
-            img_file = 'test%d.png' % i
-            self.chart_to_file(strats_chart, img_file)
+        if not isinstance(charts, (list, tuple)):
+            charts = [charts]
+            if not isinstance(tables, (list, tuple)):
+                tables = [tables]
                 
-            pic = slide.shapes.add_picture(img_file, 
-                                           left = Inches(total_chart_width), 
-                                           top = Inches(total_chart_height), 
-                                           width = Inches(chart_width), 
-                                           height = Inches(chart_height))
-            total_chart_width += chart_width + charts_horizontal_gap
-            if (i % charts_per_row) == (charts_per_row-1):
-                total_chart_height += chart_height + charts_vertical_gap
-                total_chart_width = initial_width
+        if tables:
+            total_width = multi_chart_margin_left if len(tables) > 1 else 2.2
+            initial_width = total_width
+            total_height = multi_chart_margin_top if len(charts) == 0 else 4.3
+            
+            for i, table in enumerate(tables):
+                col_widths = [0.7] + [col_width]*len(table.columns)
+                table_df = table.get_formatted_df()
+                table = create_pptx_table(slide, table_df, left = total_width, top = total_height, 
+                                          col_width = col_widths, row_height = table_row_height,
+                                          font_attrs = font_attrs)
+                
+                total_width += sum(col_widths) + charts_horizontal_gap
+                if (i % tables_per_row) == (tables_per_row-1):
+                    total_height += (table_row_height*(len(table_df)+1)) + charts_vertical_gap
+                    total_width = initial_width
+
+        if charts:
+            total_chart_width = multi_chart_margin_left if len(charts) > 1 else 2.2
+            initial_width = total_chart_width
+            total_chart_height = multi_chart_margin_top if len(charts) > 2 else 1.7
+            for i, chrt in enumerate(charts):
+                if hasattr(chrt, 'width'):
+                    chart_width = chrt.width / 800.0 * 5.0
+                    chart_height = chrt.height / 800.0 * 5.0
+                else:
+                    chart_width = chrt.figure.get_figwidth() #already in inches
+                    chart_height = chrt.figure.get_figheight()
+
+                img_file = 'test%d.png' % i
+                self.chart_to_file(chrt, img_file)
+
+                pic = slide.shapes.add_picture(img_file, 
+                                               left = Inches(total_chart_width), 
+                                               top = Inches(total_chart_height), 
+                                               width = Inches(chart_width), 
+                                               height = Inches(chart_height))
+                total_chart_width += chart_width + charts_horizontal_gap
+                if (i % charts_per_row) == (charts_per_row-1):
+                    total_chart_height += chart_height + charts_vertical_gap
+                    total_chart_width = initial_width
 
         self.save_presentation()
     
