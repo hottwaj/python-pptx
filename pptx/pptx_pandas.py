@@ -56,9 +56,9 @@ class PresentationWriter():
         slide = prs.slides.add_slide(title_only_slide_layout)
         shapes = slide.shapes
 
-        content, subtitle, title, footnotes = [s for s in slide.shapes if s.has_text_frame]
-        title.text = self.pptx_title
-        subtitle.text = slide_title
+        content, subtitle, title_shape, footnotes = [s for s in slide.shapes if s.has_text_frame]
+        title_shape.text = self.pptx_title
+        subtitle.text = title
 
         content.left, content.top, content.width, content.height = (Inches(x) for x in [5.2, 4.1, 5, 2.7])
 
@@ -66,8 +66,8 @@ class PresentationWriter():
 
         if not isinstance(charts, (list, tuple)):
             charts = [charts]
-            if not isinstance(tables, (list, tuple)):
-                tables = [tables]
+        if not isinstance(tables, (list, tuple)):
+            tables = [tables]
                 
         if tables:
             total_width = multi_chart_margin_left if len(tables) > 1 else 2.2
