@@ -2,6 +2,7 @@ from pptx import Presentation
 from pptx.util import Inches, Cm, Pt
 from pptx.dml.color import RGBColor
 from pptx.oxml.xmlchemy import OxmlElement
+import pptx
 import numbers
 import pandas
 DIST_METRIC = Inches
@@ -11,8 +12,26 @@ from shutil import copyfile
 
 class NoExistingSlideFoundError(RuntimeError): pass
 
+BASE_POSITIONS = {
+    'content': [5.2, 4.1, 5, 2.7],
+    'index_width': 0.7, 
+    'col_width': 0.6, 
+    'single_table_margin_top': 4.3,
+    'single_table_margin_left': None, # set to value other than None for different table vs chart left position
+    'single_item_margin_top': 1.7, 
+    'single_item_margin_left': 2.2,
+    'multi_item_margin_top': 1.4, 
+    'multi_item_margin_left': 1.5,
+    'charts_horizontal_gap': 0.7, 
+    'charts_vertical_gap': 0.5,
+    'table_row_height': 0.2
+}
+    
 class PresentationWriter():
-    def __init__(self, pptx_file, pptx_title, pptx_template = None):
+    def __init__(self, pptx_file, pptx_title, pptx_template = None, 
+                 default_overwrite_if_present = False,
+                 default_overwrite_only = False,
+                 default_position_overrides = {}):
         self.pptx_file = pptx_file
         self.pptx_title = pptx_title
         
@@ -24,10 +43,15 @@ class PresentationWriter():
         core_props.title = pptx_title
         core_props.keywords = ''
         
+        self.default_overwrite_if_present = default_overwrite_if_present
+        self.default_overwrite_only = default_overwrite_only
+        self.default_positions = dict(**BASE_POSITIONS)
+        self.default_positions.update(default_position_overrides)
+        
     def chart_to_file(self, chart_obj, img_file):
         if hasattr(chart_obj, 'write_image'):
             #ply_pd plots
-            chart_obj.write_image(img_file, scale=2)
+            chart_obj.write_image(img_file, scale=2, width = chart_obj.width, height = chart_obj.height)
         else:
             #matplotlib plots...
             chart_obj.figure.savefig(img_file, dpi = 300, bbox_inches = 'tight')
@@ -36,18 +60,27 @@ class PresentationWriter():
         self.presentation.save(self.pptx_file)
             
     def write_slide(self, title, charts = [], tables = [], 
-                   overwrite_if_present = False,
-                   overwrite_only = False,
-                   col_width = 0.6, charts_per_row = 2, tables_per_row = 1,
-                   multi_chart_margin_top = 1.4, multi_chart_margin_left = 1.5,
-                   charts_horizontal_gap = 0.7, charts_vertical_gap = 0.5,
-                   table_row_height = 0.2):
-        if overwrite_if_present:
+                    overwrite_if_present = None,
+                    overwrite_only = None,
+                    charts_per_row = 2, tables_per_row = 1,
+                    position_overrides = {}):
+        
+        positions = dict(**self.default_positions)
+        positions.update(position_overrides)
+        
+        if not isinstance(charts, (list, tuple)):
+            charts = [charts]
+        if not isinstance(tables, (list, tuple)):
+            tables = [tables]
+            
+        overwrite_if_present = overwrite_if_present if overwrite_if_present is not None else self.default_overwrite_if_present
+        overwrite_only = overwrite_only if overwrite_only is not None else self.default_overwrite_only
+        if overwrite_if_present or overwrite_only:
             try:
-                self.overwrite_pptx()
+                self.overwrite_pptx(title, charts, tables)
             except NoExistingSlideFoundError:
                 if overwrite_only:
-                    return
+                    raise
             else:
                 return
             
@@ -60,36 +93,14 @@ class PresentationWriter():
         title_shape.text = self.pptx_title
         subtitle.text = title
 
-        content.left, content.top, content.width, content.height = (Inches(x) for x in [5.2, 4.1, 5, 2.7])
+        content.left, content.top, content.width, content.height = (Inches(x) for x in positions['content'])
 
         font_attrs = dict(size = Pt(7), name = 'Calibri')
-
-        if not isinstance(charts, (list, tuple)):
-            charts = [charts]
-        if not isinstance(tables, (list, tuple)):
-            tables = [tables]
                 
-        if tables:
-            total_width = multi_chart_margin_left if len(tables) > 1 else 2.2
-            initial_width = total_width
-            total_height = multi_chart_margin_top if len(charts) == 0 else 4.3
-            
-            for i, table in enumerate(tables):
-                col_widths = [0.7] + [col_width]*len(table.columns)
-                table_df = table.get_formatted_df()
-                table = create_pptx_table(slide, table_df, left = total_width, top = total_height, 
-                                          col_width = col_widths, row_height = table_row_height,
-                                          font_attrs = font_attrs)
-                
-                total_width += sum(col_widths) + charts_horizontal_gap
-                if (i % tables_per_row) == (tables_per_row-1):
-                    total_height += (table_row_height*(len(table_df)+1)) + charts_vertical_gap
-                    total_width = initial_width
-
         if charts:
-            total_chart_width = multi_chart_margin_left if len(charts) > 1 else 2.2
+            total_chart_width = positions['multi_item_margin_left'] if len(charts) > 1 else positions['single_item_margin_left']
             initial_width = total_chart_width
-            total_chart_height = multi_chart_margin_top if len(charts) > 2 else 1.7
+            total_chart_height = positions['multi_item_margin_top'] if len(charts) > 2 else positions['single_item_margin_top']
             for i, chrt in enumerate(charts):
                 if hasattr(chrt, 'width'):
                     chart_width = chrt.width / 800.0 * 5.0
@@ -106,14 +117,36 @@ class PresentationWriter():
                                                top = Inches(total_chart_height), 
                                                width = Inches(chart_width), 
                                                height = Inches(chart_height))
-                total_chart_width += chart_width + charts_horizontal_gap
+                total_chart_width += chart_width + positions['charts_horizontal_gap']
                 if (i % charts_per_row) == (charts_per_row-1):
-                    total_chart_height += chart_height + charts_vertical_gap
+                    total_chart_height += chart_height + positions['charts_vertical_gap']
                     total_chart_width = initial_width
 
+        if tables:
+            total_width = (positions['multi_item_margin_left'] 
+                           if len(tables) > 1 
+                           else positions['single_table_margin_left'] or positions['single_item_margin_left'])
+            initial_width = total_width
+            total_height = positions['multi_item_margin_top'] if len(charts) == 0 else positions['single_table_margin_top']
+            
+            for i, table in enumerate(tables):
+                col_widths = [positions['index_width']] + [positions['col_width']]*len(table.columns)
+                table_df = table.get_formatted_df()
+                table_df.columns = [s.replace('<br>', '\n')
+                                    for s in table_df.columns
+                                    if isinstance(s, str)]
+                table = create_pptx_table(slide, table_df, left = total_width, top = total_height, 
+                                          col_width = col_widths, row_height = positions['table_row_height'],
+                                          font_attrs = font_attrs)
+                
+                total_width += sum(col_widths) + positions['charts_horizontal_gap']
+                if (i % tables_per_row) == (tables_per_row-1):
+                    total_height += (positions['table_row_height']*(len(table_df)+1)) + positions['charts_vertical_gap']
+                    total_width = initial_width
+                    
         self.save_presentation()
     
-    def overwrite_pptx(self, slide_title, strats_charts, strats_table = None):
+    def overwrite_pptx(self, slide_title, strats_charts = None, strats_tables = None):
         prs = self.presentation
 
         for i, slide in enumerate(prs.slides):
@@ -137,28 +170,34 @@ class PresentationWriter():
                 elif isinstance(s, pptx.shapes.graphfrm.GraphicFrame) and s.has_table:
                     tables.append(s)
 
-            if len(strats_charts) != len(charts):
-                raise RuntimeError('Need %d Picture shapes but %d available on slide "%s"'
-                                   % (len(strats_chart), len(charts), slide_title))
+            if strats_charts:
+                if len(strats_charts) != len(charts):
+                    raise RuntimeError('Need %d Picture shapes but %d available on slide "%s"'
+                                       % (len(strats_chart), len(charts), slide_title))
 
-            for i, strats_chart in enumerate(strats_charts):
-                img_file = 'test%d.png' % i
-                self.chart_to_file(strats_chart, img_file)
-                
-                # Replace image:
-                picture = charts[i]
-                with open(img_file, 'rb') as f:
-                    imgBlob = f.read()
-                imgRID = picture._pic.xpath('./p:blipFill/a:blip/@r:embed')[0]
-                imgPart = slide.part.related_parts[imgRID]
-                imgPart._blob = imgBlob
+                for i, strats_chart in enumerate(strats_charts):
+                    img_file = 'test%d.png' % i
+                    self.chart_to_file(strats_chart, img_file)
 
-            if strats_table is not None:
-                if len(tables) == 1:
-                    write_pptx_dataframe(strats_table.get_formatted_df(), tables[0].table, overwrite_formatting = False)
-                else:
+                    # Replace image:
+                    picture = charts[i]
+                    with open(img_file, 'rb') as f:
+                        imgBlob = f.read()
+                    imgRID = picture._pic.xpath('./p:blipFill/a:blip/@r:embed')[0]
+                    imgPart = slide.part.related_parts[imgRID]
+                    imgPart._blob = imgBlob
+
+            if strats_tables:
+                if len(strats_tables) != len(tables):
                     raise RuntimeError('Need %d Table shapes but %d available on slide "%s"'
-                                       % (1, len(tables), slide_title))
+                                       % (strats_tables, len(tables), slide_title))
+                    
+                for i, strats_table in enumerate(strats_tables):
+                    table_df = strats_table.get_formatted_df()
+                    table_df.columns = [s.replace('<br>', '\n')
+                                        for s in table_df.columns
+                                        if isinstance(s, str)]
+                    write_pptx_dataframe(table_df, tables[i].table, overwrite_formatting = False)
 
             self.save_presentation()
         else:
