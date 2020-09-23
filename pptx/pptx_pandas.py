@@ -133,8 +133,8 @@ class PresentationWriter():
                 col_widths = [positions['index_width']] + [positions['col_width']]*len(table.columns)
                 table_df = table.get_formatted_df()
                 table_df.columns = [s.replace('<br>', '\n')
-                                    for s in table_df.columns
-                                    if isinstance(s, str)]
+                                    if isinstance(s, str) else s
+                                    for s in table_df.columns]
                 table = create_pptx_table(slide, table_df, left = total_width, top = total_height, 
                                           col_width = col_widths, row_height = positions['table_row_height'],
                                           font_attrs = font_attrs)
